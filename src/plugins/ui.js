@@ -48,6 +48,10 @@ export default {
             this.$bybitApi.disablePositionInterval();
           }
         },
+        proxyUrl(proxyUrl) {
+          this.$bybitApi.proxyUrl = proxyUrl;
+          this.$bybitApi.init();
+        }
       },
     });
   },

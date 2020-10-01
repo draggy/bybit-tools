@@ -1,6 +1,7 @@
-import axios from 'axios';
+import fetch from 'node-fetch';
 import CryptoJS from 'crypto-js';
 import ReconnectingWebSocket from 'reconnecting-websocket';
+import HttpsProxyAgent from 'https-proxy-agent'
 
 export default {
   install(Vue, defaultOptions = {}) {
@@ -14,7 +15,9 @@ export default {
         },
         accounts: [],
         autoconnect: true,
-        
+
+        proxyUrl: '',
+        removedOrdersMaxDays: 1,
         url: 'https://api.bybit.com/',
         wsUrl: 'wss://stream.bybit.com/realtime',
         ws: null,
@@ -41,6 +44,9 @@ export default {
       },
       methods: {
         init() {
+          if (this.ws) {
+            this.ws.close();
+          }
           if (this.account.apiKey && this.account.apiSecret &&
               this.autoconnect) {
             if (this.account.isTestnet) {
@@ -52,14 +58,15 @@ export default {
             }
             this.initWs();
             this.updateInstrumentDetails();
-            this.getOrders();
             this.initPositionInterval();
+            if (this.proxyUrl) {
+              this.initGetOrdersInterval();
+            } else {
+              this.getOrders();
+            }
           }
         },
         changeSymbol(symbol) {
-          if (this.ws) {
-            this.ws.close();
-          }
           this.lastPrice = 0;
           this.markPrice = 0;
           this.walletBalance = 0;
@@ -69,9 +76,6 @@ export default {
           this.init();
         },
         changeAccount() {
-          if (this.ws) {
-            this.ws.close();
-          }
           this.lastPrice = 0;
           this.markPrice = 0;
           this.walletBalance = 0;
@@ -80,10 +84,16 @@ export default {
           this.init();
         },
         async updateInstrumentDetails() {
-          let res = await axios.get(this.url + 'v2/public/symbols');
-          this.availableSymbols = res.data.result.map(el => el.name);
-          if (res.data.ret_msg === 'OK') {
-            let symbolInfos = res.data.result.find(
+          const config = {}
+          if (this.proxyUrl) {
+            config.agent = new HttpsProxyAgent(this.proxyUrl);
+          }
+
+          const response = await fetch(this.url + 'v2/public/symbols', config);
+          const json = await response.json();
+          this.availableSymbols = json.result.map(el => el.name);
+          if (json.ret_msg === 'OK') {
+            let symbolInfos = json.result.find(
                 el => el.name === this.currentSymbol);
             this.currentTickSize = parseFloat(
                 symbolInfos.price_filter.tick_size);
@@ -93,29 +103,31 @@ export default {
         },
         initWs() {
           this.ws = new ReconnectingWebSocket(`${this.wsUrl}`);
-          
+
           this.ws.onopen = (e) => {
             let expires = Date.now() + 1500;
-            
+
             let signature = CryptoJS.HmacSHA256('GET/realtime' + expires,
                 this.account.apiSecret).
                 toString();
-            
+
             this.ws.send(
                 JSON.stringify({
                   'op': 'auth',
                   'args': [this.account.apiKey, expires, signature],
                 }));
-            
-            setTimeout(() => {
-              this.ws.send('{"op":"subscribe","args":["order"]}');
-              // this.ws.send('{"op":"subscribe","args":["position"]}');
-            }, 500);
+
+            if (!this.proxyUrl) { // Get orders through the proxy
+              setTimeout(() => {
+                this.ws.send('{"op":"subscribe","args":["order"]}');
+                // this.ws.send('{"op":"subscribe","args":["position"]}');
+              }, 500);
+            }
             this.ws.send(
                 '{"op":"subscribe","args":["instrument_info.100ms.' +
                 this.currentSymbol + '"]}');
           };
-          
+
           this.ws.onmessage = (e) => {
             let data = JSON.parse(e.data);
             switch (data.topic) {
@@ -159,29 +171,70 @@ export default {
             }
           }
         },
-        async getOrders(page = 1) {
+        initGetOrdersInterval() {
+          if (this.getOrdersInterval) {
+            this.disableGetOrdersInterval();
+          }
+          const self = this;
+          this.getOrdersInterval = setInterval(this.getOrders, 1600);
+          this.getCancelledOrdersInterval = setInterval(function() {
+            self.getOrders(1, 'Cancelled,Rejected,Filled');
+          }, 3000);
+        },
+        disableGetOrdersInterval() {
+          clearInterval(this.getOrdersInterval);
+          clearInterval(this.getCancelledOrdersInterval);
+        },
+        async getOrders(page = 1, order_status = 'New,PartiallyFilled') {
           try {
             let data = {
-              'order_status': 'New',
+              'order_status': order_status,
               'symbol': this.currentSymbol,
               'page': page,
+              'limit': 50
             };
-            let options = {
-              params: this.signData(data),
-            };
-            let res = await axios.get(this.url + 'open-api/order/list',
-                options);
-            if (res.data.ret_msg === 'ok') {
-              if (res.data.result.data) {
-                this.openOrders = this.openOrders.concat(res.data.result.data);
+            let url = new URL(this.url + 'open-api/order/list');
+            url.search = new URLSearchParams(this.signData(data));
+
+            const config = {}
+            if (this.proxyUrl) {
+              config.agent = new HttpsProxyAgent(this.proxyUrl);
+            }
+
+            const response = await fetch(url, config);
+            const json = await response.json();
+            if (json.ret_msg === 'ok') {
+              let removed_orders_updated_at = null;
+              if (json.result.data) {
+                let data = json.result.data;
+                // this.openOrders = this.openOrders.concat(json.result.data);
+                for (let i = 0; i < data.length; i++) {
+                  if (data[i].symbol === this.currentSymbol) {
+                    if (data[i].order_status === 'Cancelled'
+                        || data[i].order_status === 'Rejected'
+                        || data[i].order_status === 'Filled') {
+                      this.removeOrder(data[i]);
+                      removed_orders_updated_at = data[i].updated_at;
+                    }
+                    if (data[i].order_status === 'New'
+                        || data[i].order_status === 'PartiallyFilled') {
+                      this.addOrder(data[i]);
+                    }
+                  }
+                }
               }
-              if (res.data.result.last_page > page) {
+              if (json.result.last_page > page &&
+                (!removed_orders_updated_at ||
+                  new Date(removed_orders_updated_at) >
+                  new Date(new Date().setDate(
+                    new Date().getDate()-this.removedOrdersMaxDays
+                  )))) {
                 await this.getOrders(page + 1);
               }
             } else {
-              console.error(res);
+              console.error(json);
               this.$notify({
-                text: res.data.ret_msg,
+                text: json.ret_msg,
                 type: 'error',
               });
             }
@@ -201,24 +254,29 @@ export default {
         async getPosition() {
           try {
             let data = {};
-            let options = {
-              params: this.signData(data),
-            };
-            let res = await axios.get(this.url + 'position/list',
-                options);
-            if (res.data.ret_msg === 'ok') {
-              // console.log(res.data.result.filter(pos => pos.symbol === this.currentSymbol && pos.size > 0)) ;
-              // console.log(res.data) ;
-              this.walletBalance = res.data.result.filter(
+            let url = new URL(this.url + 'position/list');
+            url.search = new URLSearchParams(this.signData(data));
+
+            const config = {}
+            if (this.proxyUrl) {
+              config.agent = new HttpsProxyAgent(this.proxyUrl);
+            }
+
+            const response = await fetch(url, config);
+            const json = await response.json();
+            if (json.ret_msg === 'ok') {
+              // console.log(json.result.filter(pos => pos.symbol === this.currentSymbol && pos.size > 0)) ;
+              // console.log(json) ;
+              this.walletBalance = json.result.filter(
                   pos => pos.symbol === this.currentSymbol)[0].wallet_balance;
-              this.openPosition = res.data.result.filter(
+              this.openPosition = json.result.filter(
                   pos => pos.symbol === this.currentSymbol && pos.size > 0)[0];
             } else {
-              console.error(res);
+              console.error(json);
               this.$notify({
-                text: res.data.ret_msg +
-                    ((res.data.ret_code === 10002) ? '<br> server_time : ' +
-                        res.data.time_now + '<br> request_time : ' +
+                text: json.ret_msg +
+                    ((json.ret_code === 10002) ? '<br> server_time : ' +
+                        json.time_now + '<br> request_time : ' +
                         data.timestamp : ''),
                 type: 'error',
               });
@@ -243,23 +301,30 @@ export default {
             stop_loss: stopLoss,
             trailing_stop: trailingStop,
           };
+          let options = {
+        		method: 'post',
+        		body: JSON.stringify(this.signData(data)),
+		        headers: {'Content-Type': 'application/json'}
+          };
+          if (this.proxyUrl) {
+            options.agent = new HttpsProxyAgent(this.proxyUrl);
+          }
           try {
-            let res = await axios.post(
-                this.url + 'open-api/position/trading-stop',
-                this.signData(data));
-            console.log(res);
-            if (res.data.ret_msg === 'ok') {
+            const response = await fetch(this.url + 'open-api/position/trading-stop', options);
+            const json = await response.json();
+            console.log(json);
+            if (json.ret_msg === 'ok') {
               this.$notify({
                 text: 'Trading stops changed',
                 type: 'success',
               });
             } else {
               this.$notify({
-                text: res.data.ret_msg,
+                text: json.ret_msg,
                 type: 'error',
               });
             }
-            
+
           } catch (e) {
             console.error(e);
             this.$notify({
@@ -269,22 +334,30 @@ export default {
           }
         },
         async placeOrder(data) {
+          let options = {
+        		method: 'post',
+        		body:  JSON.stringify(this.signData(data)),
+		        headers: {'Content-Type': 'application/json'}
+          };
+          if (this.proxyUrl) {
+            options.agent = new HttpsProxyAgent(this.proxyUrl);
+          }
           try {
-            let res = await axios.post(this.url + 'v2/private/order/create',
-                this.signData(data));
-            console.log(res);
-            if (res.data.ret_msg === 'OK') {
+            const response = await fetch(this.url + 'v2/private/order/create', options);
+            const json = await response.json();
+            //console.log(json);
+            if (json.ret_msg === 'OK') {
               this.$notify({
                 text: 'Order placed',
                 type: 'success',
               });
             } else {
               this.$notify({
-                text: res.data.ret_msg,
+                text: json.ret_msg,
                 type: 'error',
               });
             }
-            
+
           } catch (e) {
             console.error(e);
             this.$notify({
@@ -299,16 +372,24 @@ export default {
               order_id: id,
               symbol: this.currentSymbol,
             };
-            let res = await axios.post(this.url + 'v2/private/order/cancel',
-                this.signData(data));
-            if (res.data.ret_msg === 'OK') {
+            let options = {
+          		method: 'post',
+          		body: JSON.stringify(this.signData(data)),
+  		        headers: {'Content-Type': 'application/json'}
+            };
+            if (this.proxyUrl) {
+              options.agent = new HttpsProxyAgent(this.proxyUrl);
+            }
+            const response = await fetch(this.url + 'v2/private/order/cancel', options);
+            const json = await response.json();
+            if (json.ret_msg === 'OK') {
               this.$notify({
                 text: 'Order cancelled',
                 type: 'success',
               });
             } else {
               this.$notify({
-                text: res.data.ret_msg,
+                text: json.ret_msg,
                 type: 'error',
               });
             }
@@ -321,16 +402,24 @@ export default {
             let data = {
               symbol: this.currentSymbol,
             };
-            let res = await axios.post(this.url + 'v2/private/order/cancelAll',
-                this.signData(data));
-            if (res.data.ret_msg === 'OK') {
+            let options = {
+          		method: 'post',
+          		body: JSON.stringify(this.signData(data)),
+  		        headers: {'Content-Type': 'application/json'}
+            };
+            if (this.proxyUrl) {
+              options.agent = new HttpsProxyAgent(this.proxyUrl);
+            }
+            const response = await fetch(this.url + 'v2/private/order/cancelAll', options);
+            const json = await response.json();
+            if (json.ret_msg === 'OK') {
               this.$notify({
                 text: 'Orders cancelled',
                 type: 'success',
               });
             } else {
               this.$notify({
-                text: res.data.ret_msg,
+                text: json.ret_msg,
                 type: 'error',
               });
             }
@@ -400,7 +489,7 @@ export default {
         },
         objToString(data) {
           return Object.keys(data).map(function(k) {
-            return encodeURIComponent(k) + '=' + encodeURIComponent(data[k]);
+            return k + '=' + data[k];
           }).join('&');
         },
         getDataFromLocalStorage() {
@@ -415,6 +504,9 @@ export default {
           }
           if (localStorage.autoconnect !== undefined) {
             this.autoconnect = localStorage.autoconnect === 'true';
+          }
+          if (localStorage.proxyUrl) {
+            this.proxyUrl = localStorage.proxyUrl;
           }
         },
       },
@@ -452,6 +544,9 @@ export default {
             localStorage.accounts = JSON.stringify(accounts);
           },
         },
+        proxyUrl(proxyUrl) {
+          localStorage.proxyUrl = proxyUrl;
+        }
       },
     });
   },

@@ -22,11 +22,11 @@
                 <v-icon>mdi-settings</v-icon><span class="ml-4">Accounts</span>
               </v-btn>
             </template>
-            
+
             <accounts @close="dialog = false"></accounts>
           </v-dialog>
         </div>
-  
+
         <div class="row justify-center align-center">
           <v-switch v-model="$bybitApi.autoconnect"
                     class="mr-4"
@@ -42,17 +42,17 @@
             Init
           </v-btn>
         </div>
-        
+
         <v-switch v-model="$ui.showTvChart" class="ma-2" color="primary" label="Show Tradingview Chart"></v-switch>
         <v-switch v-model="$ui.showOpenPosition" class="ma-2 mt-0" color="primary"
                   label="Show Open Position"></v-switch>
-        
+        <v-text-field v-model="$bybitApi.proxyUrl" label="Proxy url"></v-text-field>
         <v-text-field
             v-for="symbol in $bybitApi.availableSymbols"
             v-model="$ui.chartsIds[symbol]"
             :label="symbol + ' Tradingview chart id'"
         ></v-text-field>
-      
+
       </v-layout>
     </v-container>
   </v-form>
