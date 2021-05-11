@@ -17,12 +17,12 @@ export default {
   },
   computed: {},
   mounted() {
-  
+
   },
   methods: {
     sum : function(items, prop){
       return items.reduce( function(a, b){
-        return a + b[prop];
+        return a + parseFloat(b[prop]);
       }, 0);
     }
   },

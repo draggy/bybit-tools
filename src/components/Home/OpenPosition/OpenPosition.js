@@ -31,17 +31,17 @@ export default {
   },
   computed: {},
   mounted() {
-  
+
   },
   methods: {
     dailyTotal(item) {
-      return this.unrealised_pnl_last(item.entry_price, item.size, item.side) + item.realised_pnl ;
+      return this.unrealised_pnl_last(item.entry_price, item.size, item.side) + parseFloat(item.realised_pnl) ;
     },
     unrealised_pnl_last(price, qty, side) {
       if (side === 'Buy') {
-        return ((1 / price) - (1 / parseFloat(this.$bybitApi.lastPrice))) * qty;
+        return ((1 / parseFloat(price)) - (1 / parseFloat(this.$bybitApi.lastPrice))) * qty;
       } else {
-        return ((1 / parseFloat(this.$bybitApi.lastPrice) - (1 / price))) * qty;
+        return ((1 / parseFloat(this.$bybitApi.lastPrice) - (1 / parseFloat(price)))) * qty;
       }
     },
   },

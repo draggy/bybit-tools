@@ -47,17 +47,18 @@ export default {
     },
     slLoss: function() {
       if (this.form.stopLoss && this.form.contracts) {
-        let loss = Math.abs((1 / this.$bybitApi.lastPrice) -
-            (1 / parseFloat(this.form.stopLoss))) * this.form.contracts +
+        let pl = ((1 / this.$bybitApi.lastPrice) -
+            (1 / parseFloat(this.form.stopLoss)));
+        let loss = Math.abs(pl) * this.form.contracts +
             (((this.form.contracts * 0.075) / 100) / this.form.stopLoss);
-        return loss.toFixed(4) + ' ≈ ' +
-            (loss * this.$bybitApi.lastPrice).toFixed(2) +
+        return (pl < 0 ? '-' : '') + loss.toFixed(4) + ' ≈ ' +
+            (pl < 0 ? '-' : '') + (loss * this.$bybitApi.lastPrice).toFixed(2) +
             'USD (including fees)';
       }
     },
   },
   mounted() {
-  
+
   },
   methods: {
     sell() {
@@ -110,9 +111,7 @@ export default {
       },
     },
     '$bybitApi.lastPrice': async function() {
-      if (this.active
-          && this.form.stopLoss
-          && this.form.takeProfit) {
+      if (this.active) {
         await this.$nextTick();
         if (this.$refs.form.validate()) {
           this.$emit('order', {

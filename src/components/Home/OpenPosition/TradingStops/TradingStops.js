@@ -46,17 +46,18 @@ export default {
     },
     slLoss: function() {
       if (this.stopLoss && this.stopLoss != 0 && this.$bybitApi.openPosition.size) {
-        let loss = Math.abs((1 / this.$bybitApi.openPosition.entry_price) -
-            (1 / parseFloat(this.stopLoss))) * this.$bybitApi.openPosition.size +
+        let pl = ((1 / this.$bybitApi.openPosition.entry_price) -
+            (1 / parseFloat(this.stopLoss)));
+        let loss = Math.abs(pl) * this.$bybitApi.openPosition.size +
             (((this.$bybitApi.openPosition.size * 0.075) / 100) / this.stopLoss);
-        return loss.toFixed(4) + ' ≈ ' +
-            (loss * this.$bybitApi.openPosition.entry_price).toFixed(2) +
+        return (pl < 0 ? '-' : '') + loss.toFixed(4) + ' ≈ ' +
+            (pl < 0 ? '-' : '') + (loss * this.$bybitApi.openPosition.entry_price).toFixed(2) +
             'USD (including fees)';
       }
     },
   },
   mounted () {
-  
+
   },
   methods: {
     submit: function() {

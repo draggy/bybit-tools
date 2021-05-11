@@ -92,7 +92,7 @@ export default {
           const response = await fetch(this.url + 'v2/public/symbols', config);
           const json = await response.json();
           this.availableSymbols = json.result.map(el => el.name);
-          if (json.ret_msg === 'OK') {
+          if (json.ret_msg && json.ret_msg.toLowerCase() === 'ok') {
             let symbolInfos = json.result.find(
                 el => el.name === this.currentSymbol);
             this.currentTickSize = parseFloat(
@@ -193,7 +193,7 @@ export default {
               'page': page,
               'limit': 50
             };
-            let url = new URL(this.url + 'open-api/order/list');
+            let url = new URL(this.url + 'v2/private/order/list');
             url.search = new URLSearchParams(this.signData(data));
 
             const config = {}
@@ -203,7 +203,7 @@ export default {
 
             const response = await fetch(url, config);
             const json = await response.json();
-            if (json.ret_msg === 'ok') {
+            if (json.ret_msg && json.ret_msg.toLowerCase() === 'ok') {
               let removed_orders_updated_at = null;
               if (json.result.data) {
                 let data = json.result.data;
@@ -254,7 +254,7 @@ export default {
         async getPosition() {
           try {
             let data = {};
-            let url = new URL(this.url + 'position/list');
+            let url = new URL(this.url + 'v2/private/position/list');
             url.search = new URLSearchParams(this.signData(data));
 
             const config = {}
@@ -264,13 +264,21 @@ export default {
 
             const response = await fetch(url, config);
             const json = await response.json();
-            if (json.ret_msg === 'ok') {
+            if (json.ret_msg && json.ret_msg.toLowerCase() === 'ok') {
               // console.log(json.result.filter(pos => pos.symbol === this.currentSymbol && pos.size > 0)) ;
               // console.log(json) ;
-              this.walletBalance = json.result.filter(
-                  pos => pos.symbol === this.currentSymbol)[0].wallet_balance;
-              this.openPosition = json.result.filter(
-                  pos => pos.symbol === this.currentSymbol && pos.size > 0)[0];
+              let position = json.result.filter(pos => pos.data.symbol === this.currentSymbol);
+              if (position && position.length > 0) {
+                this.walletBalance = position[0].data.wallet_balance;
+              } else {
+                this.walletBalance = 0;
+              }
+              position = json.result.filter(pos => pos.data.symbol === this.currentSymbol && pos.data.size > 0);
+              if (position && position.length > 0) {
+                this.openPosition = position[0].data;
+              } else {
+                this.openPosition = null;
+              }
             } else {
               console.error(json);
               this.$notify({
@@ -313,7 +321,7 @@ export default {
             const response = await fetch(this.url + 'open-api/position/trading-stop', options);
             const json = await response.json();
             console.log(json);
-            if (json.ret_msg === 'ok') {
+            if (json.ret_msg && json.ret_msg.toLowerCase() === 'ok') {
               this.$notify({
                 text: 'Trading stops changed',
                 type: 'success',
@@ -346,7 +354,7 @@ export default {
             const response = await fetch(this.url + 'v2/private/order/create', options);
             const json = await response.json();
             //console.log(json);
-            if (json.ret_msg === 'OK') {
+            if (json.ret_msg && json.ret_msg.toLowerCase() === 'ok') {
               this.$notify({
                 text: 'Order placed',
                 type: 'success',
@@ -382,7 +390,7 @@ export default {
             }
             const response = await fetch(this.url + 'v2/private/order/cancel', options);
             const json = await response.json();
-            if (json.ret_msg === 'OK') {
+            if (json.ret_msg && json.ret_msg.toLowerCase() === 'ok') {
               this.$notify({
                 text: 'Order cancelled',
                 type: 'success',
@@ -412,7 +420,7 @@ export default {
             }
             const response = await fetch(this.url + 'v2/private/order/cancelAll', options);
             const json = await response.json();
-            if (json.ret_msg === 'OK') {
+            if (json.ret_msg && json.ret_msg.toLowerCase() === 'ok') {
               this.$notify({
                 text: 'Orders cancelled',
                 type: 'success',
@@ -444,7 +452,7 @@ export default {
         addOrder(order) {
           let exists = false;
           order.updated_at = order.timestamp;
-          console.log(order, this.openOrders);
+          //console.log(order, this.openOrders);
           for (let i = 0; i < this.openOrders.length; i++) {
             if (this.openOrders[i].order_id === order.order_id) {
               exists = true;
@@ -456,7 +464,7 @@ export default {
           }
         },
         removeOrder(order) {
-          console.log(order, this.openOrders);
+          //console.log(order, this.openOrders);
           for (let i = 0; i < this.openOrders.length; i++) {
             if (this.openOrders[i].order_id === order.order_id) {
               this.openOrders.splice(i, 1);

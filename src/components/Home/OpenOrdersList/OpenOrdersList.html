@@ -10,8 +10,8 @@
       >
         Cancel Buys
       </v-btn>
-      
-      
+
+
       <v-btn small
              :disabled="$bybitApi.openOrders.length === 0"
              color="error"
@@ -20,7 +20,7 @@
       >
         Cancel Sells
       </v-btn>
-      
+
       <v-btn small
              :disabled="$bybitApi.openOrders.length === 0"
              color="primary"
@@ -30,7 +30,7 @@
       </v-btn>
     </div>
   </v-layout>
-  
+
   <v-data-table
       :headers="headers"
       :items="$bybitApi.openOrders"
@@ -47,4 +47,3 @@
     </template>
   </v-data-table>
 </section>
-

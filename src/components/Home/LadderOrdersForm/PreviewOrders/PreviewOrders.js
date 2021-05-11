@@ -39,16 +39,16 @@ export default {
     },
     slLoss: function() {
       if (this.average && this.orders[0].stop_loss && this.totalQty) {
-        let loss = Math.abs(
-            (1 / this.average) - (1 / parseFloat(this.orders[0].stop_loss))) *
+        let pl = ((1 / this.average) - (1 / parseFloat(this.orders[0].stop_loss)));
+        let loss = Math.abs(pl) *
             this.totalQty + (((this.totalQty * 0.075) / 100) / this.orders[0].stop_loss);
-        return loss.toFixed(4) + ' ≈ ' +
-            (loss * this.$bybitApi.lastPrice).toFixed(2) + 'USD (including fees)';
+        return (pl < 0 ? '-' : '') + loss.toFixed(4) + ' ≈ ' +
+            (pl < 0 ? '-' : '') + (loss * this.$bybitApi.lastPrice).toFixed(2) + 'USD (including fees)';
       }
     },
   },
   mounted() {
-  
+
   },
   methods: {},
 };

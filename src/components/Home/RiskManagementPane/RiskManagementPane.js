@@ -86,12 +86,18 @@ export default {
           this.$bybitApi.walletBalance * this.$bybitApi.lastPrice);
     },
     stopLossDistance: function() {
+      if (!this.order.stopLoss) {
+        return 0;
+      }
       return Math.abs(this.order.price - this.order.stopLoss);
     },
     stopLossDistancePercentage: function() {
       return this.stopLossDistance / this.order.price;
     },
     targetProfitDistance: function() {
+      if (!this.order.takeProfit) {
+        return 0;
+      }
       return Math.abs(this.order.takeProfit - this.order.price);
     },
     targetProfitDistancePercentage: function() {
@@ -117,7 +123,7 @@ export default {
     },
   },
   mounted() {
-    // console.log(this.order);
+    console.log(this.order);
     if (localStorage.risk) {
       this.risk = localStorage.risk;
     }

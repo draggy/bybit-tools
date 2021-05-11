@@ -47,7 +47,7 @@ export default {
     orders: [],
     liveOrders: [],
   }),
-  
+
   computed: {
     formValidation: function() {
       return {
@@ -220,7 +220,7 @@ export default {
     },
   },
   mounted() {
-  
+
   },
   watch: {
     form: {
@@ -229,9 +229,7 @@ export default {
         if (this.active
             && this.form.higherPrice
             && this.form.lowerPrice
-            && this.form.orders
-            && this.form.stopLoss
-            && this.form.takeProfit) {
+            && this.form.orders) {
           await this.$nextTick();
           if (this.$refs.form.validate()) {
             let orders = [];
